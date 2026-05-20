@@ -1,0 +1,1860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>PDF Splitter – Split PDF Pages</title>
+  <meta name="description" content="Upload a PDF and split each page into individual downloadable PDF files instantly in your browser."/>
+  <meta name="theme-color" content="#6366f1"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="PDF Splitter"/>
+  <link rel="manifest" href="manifest.json"/>
+  <link rel="apple-touch-icon" href="icon-512.png"/>
+  <link rel="icon" type="image/png" href="icon-512.png"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d0f1a;
+      --surface: #13162a;
+      --surface2: #1a1e35;
+      --border: rgba(99,102,241,0.18);
+      --accent: #6366f1;
+      --accent2: #8b5cf6;
+      --success: #10b981;
+      --danger: #ef4444;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --radius: 16px;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px 80px;
+    }
+
+    /* ── Header ── */
+    header { text-align: center; margin-bottom: 48px; }
+    header .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: rgba(99,102,241,.15); border: 1px solid var(--border);
+      color: #a5b4fc; font-size: 12px; font-weight: 600; letter-spacing: .08em;
+      text-transform: uppercase; padding: 4px 14px; border-radius: 99px;
+      margin-bottom: 20px;
+    }
+    header h1 {
+      font-size: clamp(2rem, 5vw, 3.2rem); font-weight: 700;
+      background: linear-gradient(135deg, #e0e7ff, #a5b4fc, #8b5cf6);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      line-height: 1.15; margin-bottom: 14px;
+    }
+    header p { color: var(--muted); font-size: 1.05rem; max-width: 480px; margin: 0 auto; }
+
+    /* ── Drop Zone ── */
+    .drop-zone {
+      width: 100%; max-width: 680px;
+      background: var(--surface);
+      border: 2px dashed rgba(99,102,241,.4);
+      border-radius: var(--radius);
+      padding: 60px 30px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .25s, background .25s, transform .2s;
+      position: relative;
+    }
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: var(--accent);
+      background: rgba(99,102,241,.07);
+      transform: translateY(-2px);
+    }
+    .drop-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+    .drop-icon {
+      width: 72px; height: 72px; margin: 0 auto 20px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      font-size: 32px; box-shadow: 0 8px 32px rgba(99,102,241,.35);
+    }
+    .drop-zone h2 { font-size: 1.2rem; font-weight: 600; margin-bottom: 8px; }
+    .drop-zone p  { color: var(--muted); font-size: .9rem; }
+    .drop-zone .hint {
+      display: inline-block; margin-top: 18px; font-size: .8rem;
+      color: #a5b4fc; background: rgba(99,102,241,.12);
+      padding: 4px 14px; border-radius: 99px;
+    }
+
+    /* ── File Info Bar ── */
+    #file-info {
+      display: none; width: 100%; max-width: 680px; margin-top: 16px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 16px 22px;
+      display: none; align-items: center; gap: 14px;
+    }
+    #file-info .file-icon { font-size: 28px; }
+    #file-info .file-meta { flex: 1; }
+    #file-info .file-name { font-weight: 600; font-size: .95rem; }
+    #file-info .file-size { color: var(--muted); font-size: .8rem; margin-top: 2px; }
+    #file-info .clear-btn {
+      background: none; border: none; color: var(--muted); cursor: pointer;
+      font-size: 20px; transition: color .2s; padding: 4px;
+    }
+    #file-info .clear-btn:hover { color: var(--danger); }
+
+    /* ── Options Panel ── */
+    #options-panel {
+      display: none; width: 100%; max-width: 680px; margin-top: 20px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 24px 28px;
+    }
+    #options-panel h3 { font-size: 1rem; font-weight: 600; margin-bottom: 18px; color: #a5b4fc; }
+    .opt-row { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; flex-wrap: wrap; }
+    .opt-row label { font-size: .9rem; color: var(--muted); min-width: 130px; }
+    .opt-row select, .opt-row input[type=text] {
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--text); border-radius: 8px; padding: 8px 14px;
+      font-family: inherit; font-size: .9rem; outline: none;
+      transition: border-color .2s;
+    }
+    .opt-row select:focus, .opt-row input[type=text]:focus { border-color: var(--accent); }
+    .opt-row input[type=text] { width: 220px; }
+
+    /* toggle switch */
+    .toggle { position: relative; width: 46px; height: 26px; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; inset: 0; background: var(--surface2);
+      border-radius: 99px; cursor: pointer; transition: background .25s;
+      border: 1px solid var(--border);
+    }
+    .slider::before {
+      content: ''; position: absolute;
+      width: 18px; height: 18px; left: 3px; top: 3px;
+      background: var(--muted); border-radius: 50%; transition: .25s;
+    }
+    .toggle input:checked + .slider { background: var(--accent); }
+    .toggle input:checked + .slider::before { transform: translateX(20px); background: #fff; }
+
+    /* ── Action Button ── */
+    #split-btn {
+      display: none; width: 100%; max-width: 680px; margin-top: 20px;
+      padding: 16px; font-size: 1rem; font-weight: 700; letter-spacing: .04em;
+      color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border: none; border-radius: var(--radius); cursor: pointer;
+      box-shadow: 0 8px 24px rgba(99,102,241,.35);
+      transition: opacity .2s, transform .2s;
+    }
+    #split-btn:hover { opacity: .9; transform: translateY(-2px); }
+    #split-btn:active { transform: translateY(0); }
+    #split-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+    /* ── Progress ── */
+    #progress-wrap {
+      display: none; width: 100%; max-width: 680px; margin-top: 20px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 24px 28px;
+    }
+    #progress-label { font-size: .9rem; color: var(--muted); margin-bottom: 10px; }
+    .prog-bar-bg {
+      background: var(--surface2); border-radius: 99px; height: 8px; overflow: hidden;
+    }
+    #prog-bar { height: 100%; width: 0%; border-radius: 99px;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      transition: width .3s ease;
+    }
+
+    /* ── Pages Grid ── */
+    #pages-section { width: 100%; max-width: 900px; margin-top: 36px; display: none; }
+    #pages-section .section-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 22px; flex-wrap: wrap; gap: 12px;
+    }
+    #pages-section .section-header h2 { font-size: 1.3rem; font-weight: 700; }
+    .action-btns { display: flex; gap: 10px; flex-wrap: wrap; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 10px 20px; border-radius: 10px; font-size: .875rem;
+      font-weight: 600; cursor: pointer; border: none; transition: .2s;
+    }
+    .btn-primary { background: linear-gradient(135deg,var(--accent),var(--accent2)); color: #fff; }
+    .btn-primary:hover { opacity: .88; }
+    .btn-outline {
+      background: transparent; color: var(--accent);
+      border: 1px solid rgba(99,102,241,.4);
+    }
+    .btn-outline:hover { background: rgba(99,102,241,.1); }
+    .btn-success { background: linear-gradient(135deg,#059669,#10b981); color: #fff; }
+    .btn-success:hover { opacity: .88; }
+    .btn-folder { background: linear-gradient(135deg,#b45309,#f59e0b); color: #fff; }
+    .btn-folder:hover { opacity: .88; }
+    .btn-folder:disabled { opacity: .45; cursor: not-allowed; }
+
+    /* page cards */
+    .pages-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 18px;
+    }
+    .page-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; overflow: hidden;
+      display: flex; flex-direction: column;
+      transition: transform .2s, box-shadow .2s;
+    }
+    .page-card:hover { transform: translateY(-4px); box-shadow: 0 12px 32px rgba(0,0,0,.4); }
+    .page-card .thumb {
+      width: 100%; aspect-ratio: 3/4; background: #fff;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden; position: relative;
+    }
+    .page-card .thumb canvas { width: 100%; height: 100%; object-fit: contain; display: block; }
+    .page-card .card-footer {
+      padding: 10px 12px; display: flex; align-items: center;
+      justify-content: space-between; gap: 6px;
+    }
+    .page-label { font-size: .8rem; font-weight: 600; color: var(--text); }
+    .page-dl-btn {
+      background: linear-gradient(135deg,var(--accent),var(--accent2));
+      color: #fff; border: none; border-radius: 7px;
+      padding: 5px 12px; font-size: .75rem; font-weight: 600;
+      cursor: pointer; transition: opacity .2s;
+    }
+    .page-dl-btn:hover { opacity: .85; }
+
+    /* checkbox selection */
+    .page-card .select-wrap {
+      position: absolute; top: 8px; left: 8px;
+      width: 22px; height: 22px;
+    }
+    .page-card .select-wrap input {
+      width: 22px; height: 22px; cursor: pointer;
+      accent-color: var(--accent);
+    }
+    .page-card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(80px);
+      background: var(--surface); border: 1px solid var(--border);
+      color: var(--text); padding: 12px 24px; border-radius: 10px;
+      font-size: .875rem; font-weight: 500;
+      box-shadow: 0 8px 32px rgba(0,0,0,.5);
+      transition: transform .35s ease, opacity .35s;
+      opacity: 0; pointer-events: none; z-index: 999;
+      display: flex; align-items: center; gap: 10px;
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+    /* scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: rgba(99,102,241,.4); border-radius: 99px; }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<header>
+  <div class="badge">🔪 PDF Tool</div>
+  <h1>PDF & Text Converter</h1>
+  <p>Split a PDF into 10-page JPG chunks, or paste text to convert it directly into a single formatted PDF.</p>
+</header>
+
+<!-- Folder Save Section -->
+<div class="folder-save-section" id="folder-save-section" style="width: 100%; max-width: 680px; margin-bottom: 24px; padding: 14px 20px; background: var(--surface2); border: 1px solid var(--border); border-radius: 12px; display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap;">
+  <button class="btn btn-folder" id="choose-folder-btn" title="Choose a folder on your device to save the files">📁 Select Output Folder</button>
+  <span id="selected-folder-name" style="font-size: .9rem; color: #a5b4fc; display: none; font-weight: 500;"></span>
+</div>
+
+<!-- Drop Zone -->
+<div class="drop-zone" id="drop-zone">
+  <input type="file" id="file-input" accept="application/pdf"/>
+  <div class="drop-icon">📄</div>
+  <h2>Drop your PDF here</h2>
+  <p>or click to browse from your computer</p>
+  <span class="hint">PDF files only · processed locally</span>
+</div>
+
+<!-- Text Zone -->
+<div style="text-align: center; margin: 24px 0 10px; color: var(--muted); font-size: 0.9rem; font-weight: 500; letter-spacing: 0.05em;" id="or-divider">&mdash; OR &mdash;</div>
+<div class="text-zone" id="text-zone" style="width: 100%; max-width: 680px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px 30px; display: flex; flex-direction: column; gap: 14px;">
+  <div style="display: flex; align-items: center; justify-content: space-between;">
+    <h3 style="font-size: 1rem; color: #a5b4fc; font-weight: 600;">📝 Paste Text or Tables to Convert</h3>
+  </div>
+  <div id="paste-text-input" contenteditable="true" data-placeholder="Paste your text or tables here..." style="width: 100%; min-height: 140px; max-height: 400px; overflow-y: auto; background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 10px; padding: 14px; font-family: inherit; line-height: 1.2; outline: none; transition: border-color .2s; text-align: left;"></div>
+  <style>
+    #paste-text-input:empty:before {
+      content: attr(data-placeholder);
+      color: var(--muted);
+      pointer-events: none;
+      display: block;
+    }
+  </style>
+
+  <!-- Sequence Combiner UI -->
+  <div style="display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;">
+    <button class="btn btn-outline" id="add-snippet-btn" style="padding: 8px 14px; font-size: 0.85rem;" title="Add current text to sequence and clear the box">➕ Add to Sequence</button>
+    <button class="btn btn-outline" id="combine-snippet-btn" style="padding: 8px 14px; font-size: 0.85rem; display: none;" title="Combine all parts into the editor above">🔗 Combine Sequence</button>
+    <button class="btn btn-outline" id="copy-snippet-btn" style="padding: 8px 14px; font-size: 0.85rem; display: none;" title="Copy combined text to clipboard">📋 Copy Combined</button>
+    <button class="btn btn-outline" id="clear-snippet-btn" style="padding: 8px 14px; font-size: 0.85rem; display: none; color: #ef4444; border-color: rgba(239,68,68,0.4);" title="Discard all sequence parts">🗑️ Clear</button>
+  </div>
+  <div id="snippet-list" style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; margin-bottom: 8px;"></div>
+
+  <div style="display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 12px; flex-wrap: wrap;">
+    <button class="btn btn-outline" id="copy-editor-btn" style="padding: 12px 24px;" title="Copy all text currently in the editor to your clipboard">📋 Copy Editor Text</button>
+    <button class="btn" id="automate-btn" style="background: linear-gradient(135deg, #e11d48, #be123c); color: white; padding: 12px 24px;" title="Combine sequence, copy text, and open OnlineNotepad">🚀 Automate OnlineNotepad</button>
+    <input type="text" id="pdf-filename-input" placeholder="Custom filename (optional)" style="background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 10px 14px; font-family: inherit; font-size: 0.9rem; outline: none; transition: border-color .2s; width: 220px;" />
+    <button class="btn btn-primary" id="text-to-pdf-btn" style="padding: 12px 24px;">Convert and Save as PDF</button>
+  </div>
+</div>
+
+<!-- Merge Zone -->
+<div style="text-align: center; margin: 24px 0 10px; color: var(--muted); font-size: 0.9rem; font-weight: 500; letter-spacing: 0.05em;" id="or-divider-2">&mdash; OR &mdash;</div>
+<div class="merge-zone" id="merge-zone" style="width: 100%; max-width: 680px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px 30px; display: flex; flex-direction: column; gap: 14px;">
+  <div style="display: flex; align-items: center; justify-content: space-between;">
+    <h3 style="font-size: 1rem; color: #a5b4fc; font-weight: 600;">🔗 Combine Multiple PDFs</h3>
+  </div>
+  
+  <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+    <input type="file" id="merge-file-input" accept="application/pdf" multiple style="display: none;" />
+    <button class="btn btn-outline" onclick="document.getElementById('merge-file-input').click()" style="padding: 10px 20px;">📂 Select PDF Files</button>
+    <span id="merge-count" style="font-size: 0.9rem; color: var(--muted);">0 files selected</span>
+  </div>
+  
+  <div id="merge-file-list" style="display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto; margin-top: 10px; font-size: 0.85rem;">
+    <!-- Files listed here -->
+  </div>
+
+  <div style="display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 12px;">
+    <input type="text" id="merge-filename-input" placeholder="Merged filename (e.g. Combined.pdf)" style="background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 10px 14px; font-family: inherit; font-size: 0.9rem; outline: none; width: 220px;" />
+    <button class="btn btn-primary" id="combine-pdfs-btn" style="padding: 12px 24px; background: linear-gradient(135deg, #10b981, #059669);">🔗 Combine & Save PDFs</button>
+  </div>
+</div>
+
+<!-- File Info -->
+<div id="file-info" style="display:none">
+  <span class="file-icon">📑</span>
+  <div class="file-meta">
+    <div class="file-name" id="fn-name">—</div>
+    <div class="file-size" id="fn-size">—</div>
+  </div>
+  <button class="clear-btn" id="clear-btn" title="Remove file">✕</button>
+</div>
+
+<!-- Options -->
+<div id="options-panel" style="display:none">
+  <h3>⚙️ Split Options</h3>
+  <div class="opt-row">
+    <label>File naming</label>
+    <select id="opt-naming">
+      <option value="page">Page_1, Page_2 …</option>
+      <option value="original">OriginalName_1, _2 …</option>
+      <option value="custom">Custom prefix</option>
+    </select>
+  </div>
+  <div class="opt-row" id="custom-prefix-row" style="display:none">
+    <label>Custom prefix</label>
+    <input type="text" id="opt-prefix" placeholder="e.g. Invoice" value="Page"/>
+  </div>
+  <div class="opt-row">
+    <label>Select all pages</label>
+    <label class="toggle">
+      <input type="checkbox" id="opt-select-all" checked/>
+      <span class="slider"></span>
+    </label>
+  </div>
+</div>
+
+<!-- Split Button -->
+<button id="split-btn" style="display:none">📄 Load Pages</button>
+
+<!-- Progress -->
+<div id="progress-wrap" style="display:none">
+  <div id="progress-label">Processing pages…</div>
+  <div class="prog-bar-bg"><div id="prog-bar"></div></div>
+</div>
+
+<!-- Prompt Panel -->
+<div id="prompt-panel" style="display:none; width: 100%; max-width: 900px; margin-top: 24px; padding: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow);">
+  <h3 style="margin-top: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; font-size: 1.1rem; color: var(--text);">
+    💬 Custom ChatGPT Prompt
+  </h3>
+  <div style="display: flex; gap: 12px; align-items: flex-end;">
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+      <textarea id="custom-prompt-input" rows="2" placeholder="Default: explain accurately with the help of examples.accuracy is important.cover all slides one after other in a one go" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-size: .875rem; outline: none; resize: vertical; font-family: inherit;"></textarea>
+    </div>
+    <button class="btn btn-outline" id="apply-prompt-btn" style="height: 42px; font-weight: 600; padding: 0 20px;">Apply</button>
+  </div>
+</div>
+
+<!-- Pages Section -->
+<div id="pages-section" style="display:none">
+  <div class="section-header">
+    <h2 id="pages-title">Split Pages</h2>
+    <div class="action-btns">
+      <button class="btn btn-outline" id="select-toggle-btn">☑ Select All</button>
+      <div style="display:inline-flex;align-items:center;gap:6px;">
+        <input type="number" id="chunk-size-input" min="1" max="500" value="10" title="Pages per chunk" style="width:56px;padding:8px 6px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:.875rem;font-weight:600;text-align:center;outline:none;" />
+        <button class="btn btn-success" id="download-chunks-btn">⬇ Save as JPG Chunks</button>
+      </div>
+      <button class="btn" style="background: linear-gradient(135deg, #10a37f, #0d8c6d); color: white;" id="chatgpt-btn" title="Open ChatGPT and copy the prompt">🤖 Send to ChatGPT</button>
+    </div>
+  </div>
+  <div class="pages-grid" id="pages-grid"></div>
+</div>
+
+<!-- Chunks Section -->
+<div id="chunks-section" style="width: 100%; max-width: 900px; margin-top: 36px; display: none;">
+  <div class="section-header" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px;">
+    <h2>Stitched Chunks</h2>
+  </div>
+  <div class="pages-grid" id="chunks-grid"></div>
+
+  <!-- Chunks Combination Panel -->
+  <div id="chunks-combination-panel" style="margin-top: 32px; padding: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 12px;">
+    <h3 style="margin: 0; font-size: 1.1rem; display: flex; align-items: center; gap: 8px;">
+      🔗 Combine Chunk Responses
+    </h3>
+    <button class="btn btn-primary" id="combine-responses-btn" style="background: linear-gradient(135deg, #10b981, #059669); font-weight: 600; width: fit-content; padding: 10px 20px;">
+      🔗 Combine & Copy All Responses
+    </button>
+    <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 8px;">
+      <label style="font-size: 0.875rem; font-weight: 600; color: var(--text-muted);">Combined Responses Output</label>
+      <textarea id="combined-responses-output" rows="6" readonly placeholder="Combined responses will appear here..." style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-size: .875rem; outline: none; resize: vertical; font-family: inherit;"></textarea>
+    </div>
+    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+      <button class="btn btn-outline" id="save-combined-responses-btn" style="width: fit-content;">💾 Save Combined Responses File</button>
+      <button class="btn btn-outline" id="notepad-combined-btn" style="width: fit-content;">📝 Send to Online Notepad</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" role="alert"></div>
+
+<script>
+  // ── globals ──────────────────────────────────────────────
+  const { PDFDocument } = PDFLib;
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+  let pdfBytes = null;     // original PDF ArrayBuffer
+  let pdfDoc   = null;     // pdf-lib doc
+  let pdfJsDoc = null;     // pdf.js doc (for thumbnails)
+  let pageBlobs = [];      // {blob, filename} per page
+  let fileName  = '';
+  let totalPages = 0;
+  let selectedDirHandle = null; // for folder saving
+  let generatedChunksList = []; // Array of { blob, filename, dataUrl } for chunks
+  const DEFAULT_PROMPT = "explain accurately with the help of examples.accuracy is important.cover all slides one after other in a one go";
+  let activePromptText = DEFAULT_PROMPT;
+
+  // ── element refs ─────────────────────────────────────────
+  const dropZone   = document.getElementById('drop-zone');
+  const fileInput  = document.getElementById('file-input');
+  const fileInfo   = document.getElementById('file-info');
+  const clearBtn   = document.getElementById('clear-btn');
+  const optPanel   = document.getElementById('options-panel');
+  const splitBtn   = document.getElementById('split-btn');
+  const progWrap   = document.getElementById('progress-wrap');
+  const progBar    = document.getElementById('prog-bar');
+  const progLabel  = document.getElementById('progress-label');
+  const pagesSection = document.getElementById('pages-section');
+  const pagesGrid  = document.getElementById('pages-grid');
+  const pagesTitle = document.getElementById('pages-title');
+  const optNaming  = document.getElementById('opt-naming');
+  const optPrefix  = document.getElementById('opt-prefix');
+  const customRow  = document.getElementById('custom-prefix-row');
+  const optSelectAll = document.getElementById('opt-select-all');
+  const selectToggleBtn = document.getElementById('select-toggle-btn');
+  const downloadChunksBtn = document.getElementById('download-chunks-btn');
+  const chatgptBtn      = document.getElementById('chatgpt-btn');
+  const chooseFolderBtn = document.getElementById('choose-folder-btn');
+  const folderNameSpan  = document.getElementById('selected-folder-name');
+  const folderSection   = document.getElementById('folder-save-section');
+  const chunksSection   = document.getElementById('chunks-section');
+  const chunksGrid      = document.getElementById('chunks-grid');
+  const promptPanel     = document.getElementById('prompt-panel');
+  const customPromptInput = document.getElementById('custom-prompt-input');
+  const applyPromptBtn  = document.getElementById('apply-prompt-btn');
+  const combineResponsesBtn = document.getElementById('combine-responses-btn');
+  const combinedResponsesOutput = document.getElementById('combined-responses-output');
+  const saveCombinedResponsesBtn = document.getElementById('save-combined-responses-btn');
+  const notepadCombinedBtn = document.getElementById('notepad-combined-btn');
+
+  // Hide folder section if File System Access API not supported
+  if (!('showDirectoryPicker' in window)) {
+    if (folderSection) folderSection.style.display = 'none';
+  }
+
+  // ── drag & drop ──────────────────────────────────────────
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault(); dropZone.classList.remove('dragover');
+    const f = e.dataTransfer.files[0];
+    if (f && f.type === 'application/pdf') loadFile(f);
+    else showToast('⚠️ Please drop a valid PDF file.', true);
+  });
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) loadFile(fileInput.files[0]);
+  });
+  clearBtn.addEventListener('click', resetAll);
+
+  // ── naming option ─────────────────────────────────────────
+  optNaming.addEventListener('change', () => {
+    customRow.style.display = optNaming.value === 'custom' ? 'flex' : 'none';
+  });
+
+  // ── text to pdf ───────────────────────────────────────────
+  const textToPdfBtn = document.getElementById('text-to-pdf-btn');
+  const pasteTextInput = document.getElementById('paste-text-input');
+  const pdfFilenameInput = document.getElementById('pdf-filename-input');
+  
+  textToPdfBtn.addEventListener('click', async () => {
+    const htmlContent = pasteTextInput.innerHTML.trim();
+    const plainText = pasteTextInput.textContent.trim();
+    if (!htmlContent || !plainText) {
+      showToast('⚠️ Please paste some text first.', true);
+      return;
+    }
+
+    // Prompt for folder if not already selected
+    if (!selectedDirHandle && 'showDirectoryPicker' in window) {
+      try {
+        selectedDirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+        folderNameSpan.textContent = `Saving to: ${selectedDirHandle.name}`;
+        folderNameSpan.style.display = 'inline';
+        chooseFolderBtn.textContent = '📁 Change Folder';
+      } catch (e) {
+        console.log('Folder selection cancelled or failed, falling back to standard download.');
+      }
+    }
+
+    textToPdfBtn.disabled = true;
+    textToPdfBtn.textContent = '⏳ Converting...';
+    
+    try {
+      // Create a neat print container off-screen
+      const printContainer = document.createElement('div');
+      
+      // Normalize raw text nodes and <br> into <p> blocks to ensure clean page breaks
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = htmlContent;
+      
+      let currentP = document.createElement('p');
+      currentP.style.marginBottom = '0px';
+      currentP.style.marginTop = '0px';
+      currentP.style.pageBreakInside = 'avoid';
+      
+      function flushP() {
+        if (currentP.childNodes.length > 0) {
+          printContainer.appendChild(currentP);
+          currentP = document.createElement('p');
+          currentP.style.marginBottom = '0px';
+          currentP.style.marginTop = '0px';
+          currentP.style.pageBreakInside = 'avoid';
+        }
+      }
+
+      Array.from(tempDiv.childNodes).forEach(node => {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          if (node.tagName.toLowerCase() === 'br') {
+            flushP();
+          } else if (/^(P|DIV|UL|OL|TABLE|H1|H2|H3|H4|H5|H6|BLOCKQUOTE|PRE|HR)$/i.test(node.tagName)) {
+            flushP();
+            const clone = node.cloneNode(true);
+            // Apply page-break-inside avoid to safe blocks
+            if (!/^(UL|OL|TABLE|TBODY|THEAD)$/i.test(node.tagName)) {
+               if (node.tagName === 'DIV' && clone.querySelectorAll('p, div, ul, table').length > 0) {
+                  // It's a wrapper div, skip avoid to let children break naturally
+               } else {
+                  clone.style.pageBreakInside = 'avoid';
+               }
+            }
+            printContainer.appendChild(clone);
+          } else {
+            // Inline elements (B, I, SPAN)
+            currentP.appendChild(node.cloneNode(true));
+          }
+        } else if (node.nodeType === Node.TEXT_NODE) {
+          if (node.textContent.trim().length > 0) {
+             currentP.appendChild(node.cloneNode(true));
+          } else if (currentP.childNodes.length > 0) {
+             currentP.appendChild(node.cloneNode(true));
+          }
+        }
+      });
+      flushP();
+
+      // Keep basic print safety but do not add custom formatting
+      printContainer.style.cssText = `
+        padding: 40px;
+        background: #fff;
+        color: #000;
+      `;
+      
+      // Also ensure internal safe blocks inside wrappers have avoid
+      const blocks = printContainer.querySelectorAll('p, li, tr, h1, h2, h3, h4, h5, h6, img');
+      blocks.forEach(block => {
+        block.style.pageBreakInside = 'avoid';
+      });
+
+      let customName = pdfFilenameInput.value.trim();
+      if (customName && !customName.toLowerCase().endsWith('.pdf')) {
+        customName += '.pdf';
+      }
+      const outName = customName || "Formatted_Text_Document.pdf";
+
+      const opt = {
+        margin:       [0.5, 0.5, 0.5, 0.5],
+        filename:     outName,
+        pagebreak:    { mode: ['css', 'legacy'] },
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true, logging: false },
+        jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+      };
+
+      const worker = html2pdf().set(opt).from(printContainer);
+      await worker.toPdf().get('pdf').then((pdf) => {
+        const totalPages = pdf.internal.getNumberOfPages();
+        for (let i = 1; i <= totalPages; i++) {
+          pdf.setPage(i);
+          pdf.setFontSize(10);
+          pdf.setTextColor(100);
+          pdf.text(
+            String(i),
+            pdf.internal.pageSize.getWidth() / 2,
+            pdf.internal.pageSize.getHeight() - 0.3,
+            { align: 'center' }
+          );
+        }
+      });
+      const pdfBlob = await worker.output('blob');
+
+      // Save to folder or download
+      if (selectedDirHandle) {
+        try {
+          const fileHandle = await selectedDirHandle.getFileHandle(outName, { create: true });
+          const writable   = await fileHandle.createWritable();
+          await writable.write(pdfBlob);
+          await writable.close();
+          showToast(`✅ Saved "${outName}" to folder!`);
+        } catch (err) {
+          console.error('Error saving to folder', err);
+          showToast('❌ Failed to save to folder. Downloading normally...', true);
+          downloadBlob(pdfBlob, outName);
+        }
+      } else {
+        downloadBlob(pdfBlob, outName);
+        showToast('🎉 Text converted and downloaded successfully!');
+      }
+
+    } catch(e) {
+      console.error(e);
+      showToast('❌ Error converting text: ' + e.message, true);
+    } finally {
+      textToPdfBtn.disabled = false;
+      textToPdfBtn.textContent = 'Convert and Save as PDF';
+    }
+  });
+
+  // ── Sequence Accumulator ──────────────────────────────────
+  let textSequence = [];
+  const addSnippetBtn = document.getElementById('add-snippet-btn');
+  const combineSnippetBtn = document.getElementById('combine-snippet-btn');
+  const copySnippetBtn = document.getElementById('copy-snippet-btn');
+  const clearSnippetBtn = document.getElementById('clear-snippet-btn');
+  const snippetList = document.getElementById('snippet-list');
+
+  function updateSnippetUI() {
+    snippetList.innerHTML = '';
+    textSequence.forEach((_, i) => {
+      const badge = document.createElement('span');
+      badge.style.cssText = 'background: rgba(99,102,241,0.15); border: 1px solid var(--border); color: #a5b4fc; font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 6px;';
+      badge.textContent = `Part ${i + 1}`;
+      snippetList.appendChild(badge);
+    });
+    
+    const hasItems = textSequence.length > 0;
+    combineSnippetBtn.style.display = hasItems ? 'inline-flex' : 'none';
+    clearSnippetBtn.style.display = hasItems ? 'inline-flex' : 'none';
+    copySnippetBtn.style.display = hasItems ? 'inline-flex' : 'none';
+  }
+
+  addSnippetBtn.addEventListener('click', () => {
+    const html = pasteTextInput.innerHTML.trim();
+    if (!html || !pasteTextInput.textContent.trim()) {
+      showToast('⚠️ Editor is empty.', true);
+      return;
+    }
+    // Add header to this snippet
+    const headerHtml = `<div style="font-size: 1.1em; font-weight: bold;">${textSequence.length + 1}.</div>`;
+    textSequence.push(headerHtml + html);
+    pasteTextInput.innerHTML = '';
+    updateSnippetUI();
+    showToast(`✅ Added Part ${textSequence.length} to sequence.`);
+  });
+
+  combineSnippetBtn.addEventListener('click', async () => {
+    if (textSequence.length === 0) return;
+    const currentHTML = pasteTextInput.innerHTML.trim();
+    // Combine sequence
+    const allHTML = textSequence.join('<br>') + (currentHTML ? '<br>' + currentHTML : '');
+    pasteTextInput.innerHTML = allHTML;
+    textSequence = [];
+    updateSnippetUI();
+
+    // Automatically copy combined content to clipboard (both html and plain text formats)
+    const tempDiv = document.createElement('div');
+    tempDiv.style.cssText = 'position:absolute; left:-9999px; top:-9999px; opacity:0;';
+    tempDiv.innerHTML = allHTML;
+    document.body.appendChild(tempDiv);
+    const plainText = tempDiv.innerText;
+    document.body.removeChild(tempDiv);
+    
+    try {
+      const htmlBlob = new Blob([allHTML], { type: 'text/html' });
+      const textBlob = new Blob([plainText.trim()], { type: 'text/plain' });
+      const clipboardItem = new ClipboardItem({
+        'text/html': htmlBlob,
+        'text/plain': textBlob
+      });
+      await navigator.clipboard.write([clipboardItem]);
+      showToast('🔗 Sequence combined and copied to clipboard!');
+    } catch (e) {
+      try {
+        await navigator.clipboard.writeText(plainText.trim());
+        showToast('🔗 Sequence combined and copied to clipboard!');
+      } catch (err) {
+        showToast('🔗 Sequence combined, but failed to auto-copy to clipboard.', true);
+      }
+    }
+  });
+
+  copySnippetBtn.addEventListener('click', async () => {
+    if (textSequence.length === 0) return;
+    const currentHTML = pasteTextInput.innerHTML.trim();
+    const allHTML = textSequence.join('<br>') + (currentHTML ? '<br>' + currentHTML : '');
+    
+    // Create temporary element to extract plain text accurately
+    const tempDiv = document.createElement('div');
+    tempDiv.style.cssText = 'position:absolute; left:-9999px; top:-9999px; opacity:0;';
+    tempDiv.innerHTML = allHTML;
+    document.body.appendChild(tempDiv);
+    const plainText = tempDiv.innerText;
+    document.body.removeChild(tempDiv);
+    
+    try {
+      const htmlBlob = new Blob([allHTML], { type: 'text/html' });
+      const textBlob = new Blob([plainText.trim()], { type: 'text/plain' });
+      const clipboardItem = new ClipboardItem({
+        'text/html': htmlBlob,
+        'text/plain': textBlob
+      });
+      await navigator.clipboard.write([clipboardItem]);
+      showToast('📋 Combined text copied to clipboard!');
+    } catch (e) {
+      try {
+        await navigator.clipboard.writeText(plainText.trim());
+        showToast('📋 Combined text copied to clipboard!');
+      } catch (err) {
+        showToast('❌ Failed to copy text.', true);
+      }
+    }
+  });
+
+  document.getElementById('copy-editor-btn').addEventListener('click', async () => {
+    const currentHTML = pasteTextInput.innerHTML.trim();
+    if (!currentHTML) {
+      showToast('⚠️ Editor is empty.', true);
+      return;
+    }
+    const tempDiv = document.createElement('div');
+    tempDiv.style.cssText = 'position:absolute; left:-9999px; top:-9999px; opacity:0;';
+    tempDiv.innerHTML = currentHTML;
+    document.body.appendChild(tempDiv);
+    const plainText = tempDiv.innerText;
+    document.body.removeChild(tempDiv);
+    
+    try {
+      const htmlBlob = new Blob([currentHTML], { type: 'text/html' });
+      const textBlob = new Blob([plainText.trim()], { type: 'text/plain' });
+      const clipboardItem = new ClipboardItem({
+        'text/html': htmlBlob,
+        'text/plain': textBlob
+      });
+      await navigator.clipboard.write([clipboardItem]);
+      showToast('📋 Editor text copied to clipboard!');
+    } catch (e) {
+      try {
+        await navigator.clipboard.writeText(plainText.trim());
+        showToast('📋 Editor text copied to clipboard!');
+      } catch (err) {
+        showToast('❌ Failed to copy text.', true);
+      }
+    }
+  });
+
+  clearSnippetBtn.addEventListener('click', () => {
+    textSequence = [];
+    updateSnippetUI();
+    showToast('🗑️ Sequence cleared.');
+  });
+
+  // ── automate online notepad ───────────────────────────────
+  document.getElementById('automate-btn').addEventListener('click', async () => {
+    let finalHTML = '';
+    let plainText = '';
+    const currentHTML = pasteTextInput.innerHTML.trim();
+    
+    if (textSequence.length > 0) {
+      finalHTML = textSequence.join('<br>') + (currentHTML ? '<br>' + currentHTML : '');
+      textSequence = [];
+      updateSnippetUI();
+    } else {
+      finalHTML = currentHTML;
+    }
+
+    if (!finalHTML) {
+      showToast('⚠️ Editor and sequence are empty.', true);
+      return;
+    }
+
+    pasteTextInput.innerHTML = finalHTML;
+
+    const tempDiv = document.createElement('div');
+    tempDiv.style.cssText = 'position:absolute; left:-9999px; top:-9999px; opacity:0;';
+    tempDiv.innerHTML = finalHTML;
+    document.body.appendChild(tempDiv);
+    plainText = tempDiv.innerText;
+    
+    // Robust copy fallback
+    try {
+      const htmlBlob = new Blob([finalHTML], { type: 'text/html' });
+      const textBlob = new Blob([plainText.trim()], { type: 'text/plain' });
+      const clipboardItem = new ClipboardItem({
+        'text/html': htmlBlob,
+        'text/plain': textBlob
+      });
+      await navigator.clipboard.write([clipboardItem]);
+    } catch (e) {
+      try {
+        await navigator.clipboard.writeText(plainText.trim());
+      } catch (err) {
+        // Fallback to execCommand for older browsers or file:// protocol restrictions
+        const textarea = document.createElement('textarea');
+        textarea.value = plainText.trim();
+        textarea.style.position = 'fixed';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+    }
+    document.body.removeChild(tempDiv);
+
+    showToast('✅ Text Combined & Copied!', false);
+    
+    // Alert the user so they know they must paste it (or use Tampermonkey)
+    showToast('✅ Sequence sent! Opening OnlineNotepad...', false);
+    
+    setTimeout(() => {
+       // Pass the formatted HTML directly through the URL hash so the Tampermonkey script can catch it without needing clipboard permissions!
+       const targetUrl = 'https://www.onlinenotepad.io/text-to-pdf#' + encodeURIComponent(finalHTML);
+       window.open(targetUrl, '_blank');
+    }, 300);
+  });
+
+  // ── merge pdfs ──────────────────────────────────────────────
+  const mergeFileInput = document.getElementById('merge-file-input');
+  const mergeFileList = document.getElementById('merge-file-list');
+  const mergeCount = document.getElementById('merge-count');
+  const combinePdfsBtn = document.getElementById('combine-pdfs-btn');
+  const mergeFilenameInput = document.getElementById('merge-filename-input');
+  
+  let filesToMerge = [];
+
+  mergeFileInput.addEventListener('change', (e) => {
+    const newFiles = Array.from(e.target.files).filter(f => f.type === 'application/pdf');
+    filesToMerge = filesToMerge.concat(newFiles);
+    updateMergeUI();
+    mergeFileInput.value = ''; // reset so same files can be selected again if needed
+  });
+
+  function updateMergeUI() {
+    mergeFileList.innerHTML = '';
+    filesToMerge.forEach((file, index) => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display: flex; justify-content: space-between; align-items: center; background: var(--surface2); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border);';
+      
+      const name = document.createElement('span');
+      name.textContent = `${index + 1}. ${file.name}`;
+      name.style.overflow = 'hidden';
+      name.style.textOverflow = 'ellipsis';
+      name.style.whiteSpace = 'nowrap';
+      
+      const removeBtn = document.createElement('button');
+      removeBtn.textContent = '✕';
+      removeBtn.style.cssText = 'background: none; border: none; color: var(--danger); cursor: pointer; font-size: 14px; padding: 0 4px;';
+      removeBtn.onclick = () => {
+        filesToMerge.splice(index, 1);
+        updateMergeUI();
+      };
+      
+      row.appendChild(name);
+      row.appendChild(removeBtn);
+      mergeFileList.appendChild(row);
+    });
+    mergeCount.textContent = `${filesToMerge.length} file${filesToMerge.length !== 1 ? 's' : ''} selected`;
+  }
+
+  combinePdfsBtn.addEventListener('click', async () => {
+    if (filesToMerge.length === 0) {
+      showToast('⚠️ Please select at least one PDF file to combine.', true);
+      return;
+    }
+
+    if (!selectedDirHandle && 'showDirectoryPicker' in window) {
+      try {
+        selectedDirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+        folderNameSpan.textContent = `Saving to: ${selectedDirHandle.name}`;
+        folderNameSpan.style.display = 'inline';
+        chooseFolderBtn.textContent = '📁 Change Folder';
+      } catch (e) {
+        console.log('Folder selection cancelled or failed.');
+      }
+    }
+
+    combinePdfsBtn.disabled = true;
+    combinePdfsBtn.textContent = '⏳ Combining...';
+    
+    try {
+      const mergedPdf = await PDFDocument.create();
+      
+      for (const file of filesToMerge) {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+        const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+        copiedPages.forEach((page) => {
+          mergedPdf.addPage(page);
+        });
+      }
+
+      const pages = mergedPdf.getPages();
+      for (let i = 0; i < pages.length; i++) {
+        const page = pages[i];
+        const { width, height } = page.getSize();
+        page.drawText(String(i + 1), {
+          x: width / 2 - 4,
+          y: 20,
+          size: 10,
+          color: PDFLib.rgb(0, 0, 0),
+        });
+      }
+
+      const mergedPdfBytes = await mergedPdf.save();
+      const mergedBlob = new Blob([mergedPdfBytes], { type: 'application/pdf' });
+      
+      let outName = mergeFilenameInput.value.trim() || 'Combined_Document.pdf';
+      if (!outName.toLowerCase().endsWith('.pdf')) outName += '.pdf';
+
+      if (selectedDirHandle) {
+        try {
+          const fileHandle = await selectedDirHandle.getFileHandle(outName, { create: true });
+          const writable   = await fileHandle.createWritable();
+          await writable.write(mergedBlob);
+          await writable.close();
+          showToast(`✅ Saved "${outName}" to folder!`);
+        } catch (err) {
+          console.error('Error saving to folder', err);
+          showToast('❌ Failed to save to folder. Downloading normally...', true);
+          downloadBlob(mergedBlob, outName);
+        }
+      } else {
+        downloadBlob(mergedBlob, outName);
+        showToast('🎉 PDFs combined and downloaded successfully!');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('❌ Error combining PDFs: ' + err.message, true);
+    } finally {
+      combinePdfsBtn.disabled = false;
+      combinePdfsBtn.textContent = '🔗 Combine & Save PDFs';
+      filesToMerge = [];
+      updateMergeUI();
+    }
+  });
+
+  // ── load file ─────────────────────────────────────────────
+  async function loadFile(file) {
+    try {
+      resetPages();
+      fileName = file.name.replace(/\.pdf$/i, '');
+      const sizeMB = (file.size / 1048576).toFixed(2);
+
+      document.getElementById('fn-name').textContent = file.name;
+      document.getElementById('fn-size').textContent = `Loading...`;
+      
+      document.getElementById('drop-zone').style.display = 'none';
+      document.getElementById('or-divider').style.display = 'none';
+      document.getElementById('text-zone').style.display = 'none';
+      document.getElementById('or-divider-2').style.display = 'none';
+      document.getElementById('merge-zone').style.display = 'none';
+      
+      fileInfo.style.display = 'flex';
+
+      pdfBytes = await file.arrayBuffer();
+      pdfDoc   = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+      pdfJsDoc = await pdfjsLib.getDocument({ data: new Uint8Array(pdfBytes) }).promise;
+      totalPages = pdfDoc.getPageCount();
+
+      document.getElementById('fn-size').textContent =
+        `${sizeMB} MB · ${totalPages} page${totalPages !== 1 ? 's' : ''}`;
+        
+      optPanel.style.display = 'block';
+      splitBtn.style.display = 'block';
+      showToast(`✅ Loaded "${file.name}" — ${totalPages} pages`);
+    } catch (e) {
+      console.error(e);
+      showToast('❌ Error loading PDF: ' + e.message, true);
+      resetAll();
+    }
+  }
+
+  // ── split ─────────────────────────────────────────────────
+  splitBtn.addEventListener('click', splitPDF);
+
+  async function splitPDF() {
+    if (!pdfDoc || !pdfJsDoc) {
+      showToast('⚠️ Document not fully loaded yet.', true);
+      return;
+    }
+    splitBtn.disabled = true;
+    progWrap.style.display = 'block';
+    pagesSection.style.display = 'none';
+    pagesGrid.innerHTML = '';
+    pageBlobs = [];
+
+    try {
+      for (let i = 0; i < totalPages; i++) {
+        const pct = Math.round(((i + 1) / totalPages) * 100);
+        progLabel.textContent = `Rendering page ${i + 1} of ${totalPages}…`;
+        progBar.style.width = pct + '%';
+
+        const page = await pdfJsDoc.getPage(i + 1);
+
+        // Render smaller thumbnail for the UI grid (low overhead)
+        const thumbViewport = page.getViewport({ scale: 0.8 });
+        const thumbCanvas = document.createElement('canvas');
+        thumbCanvas.width = thumbViewport.width;
+        thumbCanvas.height = thumbViewport.height;
+        const thumbCtx = thumbCanvas.getContext('2d');
+        thumbCtx.fillStyle = '#ffffff';
+        thumbCtx.fillRect(0, 0, thumbCanvas.width, thumbCanvas.height);
+        await page.render({ canvasContext: thumbCtx, viewport: thumbViewport }).promise;
+        
+        const fn = getPageName(i);
+        addPageCard(i, fn, thumbCanvas);
+        
+        // Help garbage collection
+        page.cleanup();
+      }
+
+      progLabel.textContent = `Done! ${totalPages} pages split.`;
+      pagesSection.style.display = 'block';
+      if (promptPanel) promptPanel.style.display = 'block';
+      pagesTitle.textContent = `Split Pages (${totalPages})`;
+      showToast(`🎉 Split complete — ${totalPages} pages ready`);
+    } catch (e) {
+      console.error(e);
+      showToast('❌ Error processing pages: ' + e.message, true);
+      progLabel.textContent = '❌ Error occurred.';
+    } finally {
+      splitBtn.disabled = false;
+    }
+  }
+
+  // ── (thumbnail rendering replaced by inline logic above) ────────
+
+  // ── page card ─────────────────────────────────────────────
+  function addPageCard(idx, name, thumbCanvas) {
+    const card = document.createElement('div');
+    card.className = 'page-card';
+    card.dataset.idx = idx;
+
+    const thumbDiv = document.createElement('div');
+    thumbDiv.className = 'thumb';
+
+    const selWrap = document.createElement('div');
+    selWrap.className = 'select-wrap';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.checked = true; cb.id = `cb-${idx}`;
+    cb.addEventListener('change', () => card.classList.toggle('selected', !cb.checked ? false : true));
+    selWrap.appendChild(cb);
+    card.classList.add('selected');
+
+    thumbDiv.appendChild(thumbCanvas);
+    thumbDiv.appendChild(selWrap);
+
+    const footer = document.createElement('div');
+    footer.className = 'card-footer';
+    const lbl = document.createElement('span');
+    lbl.className = 'page-label'; lbl.textContent = `Page ${idx + 1}`;
+    const dlBtn = document.createElement('button');
+    dlBtn.className = 'page-dl-btn'; dlBtn.textContent = '⬇ Save';
+    dlBtn.addEventListener('click', async () => {
+      dlBtn.disabled = true;
+      dlBtn.textContent = '⏳ ...';
+      try {
+        const page = await pdfJsDoc.getPage(idx + 1);
+        const viewport = page.getViewport({ scale: 2.5 });
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        
+        const blob = await new Promise((resolve, reject) => {
+          canvas.toBlob(b => {
+            if (b) resolve(b);
+            else reject(new Error('Canvas export failed'));
+          }, 'image/jpeg', 0.92);
+        });
+
+        if (selectedDirHandle) {
+          try {
+            const fileHandle = await selectedDirHandle.getFileHandle(name, { create: true });
+            const writable   = await fileHandle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+            showToast(`✅ Saved "${name}" to folder!`);
+          } catch (err) {
+            console.error(err);
+            downloadBlob(blob, name);
+          }
+        } else {
+          downloadBlob(blob, name);
+        }
+        page.cleanup();
+      } catch (err) {
+        console.error(err);
+        showToast('❌ Save failed: ' + err.message, true);
+      } finally {
+        dlBtn.disabled = false;
+        dlBtn.textContent = '⬇ Save';
+      }
+    });
+
+    footer.appendChild(lbl); footer.appendChild(dlBtn);
+    card.appendChild(thumbDiv); card.appendChild(footer);
+    pagesGrid.appendChild(card);
+  }
+
+  function addChunkCard(idx, blob, filename) {
+    const card = document.createElement('div');
+    card.className = 'page-card';
+    card.dataset.idx = idx;
+    card.style.display = 'flex';
+    card.style.flexDirection = 'column';
+
+    const thumbDiv = document.createElement('div');
+    thumbDiv.className = 'thumb';
+    
+    const img = document.createElement('img');
+    const objectUrl = URL.createObjectURL(blob);
+    img.src = objectUrl;
+    img.style.cssText = 'width: 100%; height: 100%; object-fit: contain; display: block;';
+    thumbDiv.appendChild(img);
+
+    // Save the object URL in the global list so we can revoke it when clearing
+    generatedChunksList.push({ blob, filename, dataUrl: objectUrl });
+
+    const footer = document.createElement('div');
+    footer.className = 'card-footer';
+    footer.style.cssText = 'padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 6px;';
+    
+    const lbl = document.createElement('span');
+    lbl.className = 'page-label';
+    lbl.textContent = `Chunk ${idx + 1}`;
+    
+    const btnContainer = document.createElement('div');
+    btnContainer.style.display = 'flex';
+    btnContainer.style.gap = '4px';
+
+    const dlBtn = document.createElement('button');
+    dlBtn.className = 'page-dl-btn';
+    dlBtn.textContent = '⬇ Save';
+    dlBtn.addEventListener('click', async () => {
+      if (selectedDirHandle) {
+        try {
+          const fileHandle = await selectedDirHandle.getFileHandle(filename, { create: true });
+          const writable = await fileHandle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+          showToast(`✅ Saved "${filename}" to folder!`);
+        } catch (err) {
+          console.error(err);
+          downloadBlob(blob, filename);
+        }
+      } else {
+        downloadBlob(blob, filename);
+      }
+    });
+
+    const gptBtn = document.createElement('button');
+    gptBtn.className = 'page-dl-btn';
+    gptBtn.style.background = 'linear-gradient(135deg,#10a37f,#0d8c6d)';
+    gptBtn.textContent = '🤖 ChatGPT';
+    gptBtn.addEventListener('click', async () => {
+      gptBtn.disabled = true;
+      const oldText = gptBtn.textContent;
+      gptBtn.textContent = '⏳ ...';
+      let success = false;
+      
+      try {
+        // 1. Copy to clipboard as PNG
+        try {
+          const imgTemp = new Image();
+          const pBlobPromise = new Promise(resolve => {
+            imgTemp.onload = () => {
+              const canvasTemp = document.createElement('canvas');
+              canvasTemp.width = imgTemp.naturalWidth;
+              canvasTemp.height = imgTemp.naturalHeight;
+              canvasTemp.getContext('2d').drawImage(imgTemp, 0, 0);
+              canvasTemp.toBlob(resolve, 'image/png');
+            };
+          });
+          imgTemp.src = objectUrl;
+          const pngBlob = await pBlobPromise;
+          
+          await navigator.clipboard.write([
+            new ClipboardItem({ 'image/png': pngBlob })
+          ]);
+          showToast(`📋 Copied Chunk ${idx + 1} to clipboard!`);
+        } catch (clipErr) {
+          console.error('[Clipboard] Copy failed:', clipErr);
+        }
+
+        // 2. Send via postMessage
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          window.pendingChatGPTData = {
+            imageDataUrl: reader.result,
+            promptText: activePromptText
+          };
+          showToast(`🚀 Opening ChatGPT for Chunk ${idx + 1}...`);
+          setTimeout(() => {
+            const url = `https://chatgpt.com/?q=${encodeURIComponent(activePromptText)}&autopaste=1`;
+            window.open(url, '_blank', 'opener');
+          }, 1000);
+        };
+        reader.readAsDataURL(blob);
+        success = true;
+      } catch (err) {
+        console.error(err);
+        showToast('❌ Failed to prepare chunk: ' + err.message, true);
+      } finally {
+        setTimeout(() => {
+          gptBtn.disabled = false;
+          if (success) {
+            gptBtn.innerHTML = '✅ ChatGPT';
+            gptBtn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+          } else {
+            gptBtn.textContent = oldText;
+          }
+        }, 1500);
+      }
+    });
+
+    btnContainer.appendChild(dlBtn);
+    btnContainer.appendChild(gptBtn);
+    footer.appendChild(lbl);
+    footer.appendChild(btnContainer);
+    card.appendChild(thumbDiv);
+    card.appendChild(footer);
+
+    // 3. Response Text area + Save Text button
+    const respContainer = document.createElement('div');
+    respContainer.style.cssText = 'padding: 0 12px 12px 12px; display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--border); background: var(--surface); border-bottom-left-radius: 12px; border-bottom-right-radius: 12px;';
+
+    const respTextarea = document.createElement('textarea');
+    respTextarea.placeholder = 'Paste ChatGPT response here...';
+    respTextarea.rows = 3;
+    respTextarea.style.cssText = 'width: 100%; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-size: 0.8rem; outline: none; resize: vertical; font-family: inherit; margin-top: 8px;';
+
+    const saveTextBtn = document.createElement('button');
+    saveTextBtn.className = 'page-dl-btn';
+    saveTextBtn.style.cssText = 'width: 100%; display: flex; align-items: center; justify-content: center; gap: 4px; background: linear-gradient(135deg, #3b82f6, #2563eb); color: white;';
+    saveTextBtn.innerHTML = '💾 Save Text';
+
+    saveTextBtn.addEventListener('click', async () => {
+      const responseVal = respTextarea.value.trim();
+      if (!responseVal) {
+        showToast('⚠️ Please paste the response text first.', true);
+        return;
+      }
+      
+      const txtFilename = `${idx + 1}.txt`;
+      const textBlob = new Blob([responseVal], { type: 'text/plain;charset=utf-8' });
+
+      saveTextBtn.disabled = true;
+      const oldText = saveTextBtn.textContent;
+      saveTextBtn.textContent = '⏳ Saving...';
+
+      try {
+        if (selectedDirHandle) {
+          const fileHandle = await selectedDirHandle.getFileHandle(txtFilename, { create: true });
+          const writable = await fileHandle.createWritable();
+          await writable.write(textBlob);
+          await writable.close();
+          showToast(`✅ Saved "${txtFilename}" to folder!`);
+        } else {
+          downloadBlob(textBlob, txtFilename);
+          showToast(`🎉 Downloaded "${txtFilename}"!`);
+        }
+        
+        saveTextBtn.innerHTML = '✅ Saved';
+        saveTextBtn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+      } catch (err) {
+        console.error(err);
+        showToast('❌ Failed to save text: ' + err.message, true);
+        saveTextBtn.textContent = oldText;
+      } finally {
+        setTimeout(() => {
+          saveTextBtn.disabled = false;
+        }, 1500);
+      }
+    });
+
+    respContainer.appendChild(respTextarea);
+    respContainer.appendChild(saveTextBtn);
+    card.appendChild(respContainer);
+
+    chunksGrid.appendChild(card);
+  }
+
+  // ── naming ────────────────────────────────────────────────
+  function getPageName(i) {
+    const n = i + 1;
+    const mode = optNaming.value;
+    let prefix = 'Page';
+    if (mode === 'original') prefix = fileName;
+    else if (mode === 'custom') prefix = optPrefix.value.trim() || 'Page';
+    return `${prefix}_${String(n).padStart(3, '0')}.jpg`;
+  }
+
+  // ── select all toggle ────────────────────────────────────
+  selectToggleBtn.addEventListener('click', () => {
+    const allCbs = pagesGrid.querySelectorAll('input[type=checkbox]');
+    const anyUnchecked = [...allCbs].some(c => !c.checked);
+    allCbs.forEach(c => {
+      c.checked = anyUnchecked;
+      c.closest('.page-card').classList.toggle('selected', anyUnchecked);
+    });
+    selectToggleBtn.textContent = anyUnchecked ? '☐ Deselect All' : '☑ Select All';
+  });
+
+  optSelectAll.addEventListener('change', () => {
+    const v = optSelectAll.checked;
+    pagesGrid.querySelectorAll('input[type=checkbox]').forEach(c => {
+      c.checked = v;
+      c.closest('.page-card').classList.toggle('selected', v);
+    });
+  });
+
+  applyPromptBtn.addEventListener('click', () => {
+    const val = customPromptInput.value.trim();
+    if (val) {
+      activePromptText = val;
+      showToast('✅ Custom prompt applied!');
+    } else {
+      activePromptText = DEFAULT_PROMPT;
+      showToast('ℹ️ Reverted to default prompt.');
+    }
+  });
+
+  // ── combine responses ───────────────────────────────────
+  combineResponsesBtn.addEventListener('click', async () => {
+    const cards = [...chunksGrid.querySelectorAll('.page-card')];
+    if (cards.length === 0) {
+      showToast('⚠️ No stitched chunks available.', true);
+      return;
+    }
+    
+    // Sort cards by dataset.idx to ensure correct order
+    cards.sort((a, b) => parseInt(a.dataset.idx, 10) - parseInt(b.dataset.idx, 10));
+
+    const textArray = [];
+    let emptyCount = 0;
+    
+    cards.forEach(card => {
+      const idx = parseInt(card.dataset.idx, 10);
+      const textarea = card.querySelector('textarea');
+      if (textarea) {
+        const val = textarea.value.trim();
+        if (val) {
+          textArray.push(val);
+        } else {
+          emptyCount++;
+        }
+      }
+    });
+
+    if (textArray.length === 0) {
+      showToast('⚠️ All response boxes are empty.', true);
+      return;
+    }
+
+    const combinedText = textArray.join('\n\n');
+    combinedResponsesOutput.value = combinedText;
+
+    // Autocopy to clipboard
+    try {
+      await navigator.clipboard.writeText(combinedText);
+      if (emptyCount > 0) {
+        showToast(`📋 Combined & copied! (${emptyCount} empty responses skipped)`);
+      } else {
+        showToast('📋 Combined & copied all responses!');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('❌ Combined, but failed to copy to clipboard.', true);
+    }
+  });
+
+  saveCombinedResponsesBtn.addEventListener('click', async () => {
+    const combinedText = combinedResponsesOutput.value.trim();
+    if (!combinedText) {
+      showToast('⚠️ Please combine responses first.', true);
+      return;
+    }
+
+    const outName = 'Combined_Responses.txt';
+    const textBlob = new Blob([combinedText], { type: 'text/plain;charset=utf-8' });
+
+    try {
+      if (selectedDirHandle) {
+        const fileHandle = await selectedDirHandle.getFileHandle(outName, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(textBlob);
+        await writable.close();
+        showToast(`✅ Saved "${outName}" to folder!`);
+      } else {
+        downloadBlob(textBlob, outName);
+        showToast(`🎉 Downloaded "${outName}"!`);
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('❌ Failed to save file: ' + err.message, true);
+    }
+  });
+
+  notepadCombinedBtn.addEventListener('click', () => {
+    let combinedText = combinedResponsesOutput.value.trim();
+    if (!combinedText) {
+      // Auto-trigger combination if they haven't clicked the combine button yet
+      const cards = [...chunksGrid.querySelectorAll('.page-card')];
+      if (cards.length === 0) {
+        showToast('⚠️ No stitched chunks available.', true);
+        return;
+      }
+      cards.sort((a, b) => parseInt(a.dataset.idx, 10) - parseInt(b.dataset.idx, 10));
+
+      const textArray = [];
+      cards.forEach(card => {
+        const idx = parseInt(card.dataset.idx, 10);
+        const textarea = card.querySelector('textarea');
+        if (textarea) {
+          const val = textarea.value.trim();
+          if (val) {
+            textArray.push(val);
+          }
+        }
+      });
+
+      if (textArray.length === 0) {
+        showToast('⚠️ All response boxes are empty.', true);
+        return;
+      }
+      combinedText = textArray.join('\n\n');
+      combinedResponsesOutput.value = combinedText;
+    }
+
+    // Format text to HTML representation (replacing newlines with <br>)
+    const formattedHtml = combinedText
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\n/g, '<br>');
+
+    showToast('🚀 Opening OnlineNotepad...');
+    setTimeout(() => {
+       const targetUrl = 'https://www.onlinenotepad.io/text-to-pdf#' + encodeURIComponent(formattedHtml);
+       window.open(targetUrl, '_blank');
+    }, 300);
+  });
+
+  // ── download helpers ─────────────────────────────────────
+  function downloadBlob(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = name;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1500);
+  }
+
+  async function buildZip(pages) {
+    const zip = new JSZip();
+    pages.forEach(({ blob, filename }) => zip.file(filename, blob));
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    downloadBlob(zipBlob, `${fileName}_split.zip`);
+    showToast(`📦 ZIP downloaded — ${pages.length} file${pages.length !== 1 ? 's' : ''}`);
+  }
+
+  // ── merge to 10 page chunks and save ─────────────────────
+  downloadChunksBtn.addEventListener('click', async () => {
+    const selectedIndices = [...pagesGrid.querySelectorAll('input[type=checkbox]:checked')]
+      .map(cb => parseInt(cb.id.replace('cb-', '')));
+      
+    if (!selectedIndices.length) { 
+      showToast('⚠️ No pages selected.', true); 
+      return; 
+    }
+    
+    // Prompt for folder if not already selected
+    if (!selectedDirHandle && 'showDirectoryPicker' in window) {
+      try {
+        selectedDirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+        folderNameSpan.textContent = `Saving to: ${selectedDirHandle.name}`;
+        folderNameSpan.style.display = 'inline';
+        chooseFolderBtn.textContent = '📁 Change Folder';
+      } catch (e) {
+        console.log('Folder selection cancelled or failed, falling back to standard download.');
+      }
+    }
+
+    downloadChunksBtn.disabled = true;
+    const oldText = downloadChunksBtn.textContent;
+    downloadChunksBtn.textContent = '⏳ Merging & Saving...';
+    const CHUNK_SIZE = parseInt(document.getElementById('chunk-size-input').value, 10) || 10;
+    showToast(`⏳ Stitching images in chunks of ${CHUNK_SIZE}, please wait...`);
+
+    try {
+      let generatedChunks = [];
+      chunksGrid.innerHTML = '';
+      
+      // Revoke old object URLs
+      generatedChunksList.forEach(chunk => {
+        if (chunk.dataUrl && chunk.dataUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(chunk.dataUrl);
+        }
+      });
+      generatedChunksList = [];
+
+      for (let i = 0; i < selectedIndices.length; i += CHUNK_SIZE) {
+        const chunk = selectedIndices.slice(i, i + CHUNK_SIZE);
+        
+        // 1. Render all pages in this chunk to canvases at high-quality on-demand
+        const canvases = await Promise.all(chunk.map(async idx => {
+          const page = await pdfJsDoc.getPage(idx + 1);
+          const viewport = page.getViewport({ scale: 2.5 });
+          const canvas = document.createElement('canvas');
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          await page.render({ canvasContext: ctx, viewport }).promise;
+          page.cleanup();
+          return canvas;
+        }));
+
+        // 2. Calculate dimensions for this chunk
+        let totalHeight = 0;
+        let maxWidth = 0;
+        canvases.forEach(c => {
+          totalHeight += c.height;
+          if (c.width > maxWidth) maxWidth = c.width;
+        });
+
+        // 3. Draw to canvas
+        const canvas = document.createElement('canvas');
+        canvas.width = maxWidth;
+        canvas.height = totalHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        let currentY = 0;
+        canvases.forEach(c => {
+          const xOffset = Math.floor((maxWidth - c.width) / 2);
+          ctx.drawImage(c, xOffset, currentY);
+          currentY += c.height;
+        });
+
+        // 4. Export to Blob
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.90));
+        if (!blob) throw new Error("Canvas export failed");
+        
+        const chunkIndex = (i / CHUNK_SIZE) + 1;
+        const chunkFileName = `${chunkIndex}.jpg`;
+        generatedChunks.push({ blob, filename: chunkFileName });
+      }
+
+      // Add to page UI for viewing/watching
+      generatedChunks.forEach((chunk, idx) => {
+        addChunkCard(idx, chunk.blob, chunk.filename);
+      });
+      chunksSection.style.display = 'block';
+      pagesSection.style.display = 'none';
+
+      // 5. Save to folder or download
+      if (selectedDirHandle) {
+        try {
+          let savedCount = 0;
+          for (const chunk of generatedChunks) {
+            const fileHandle = await selectedDirHandle.getFileHandle(chunk.filename, { create: true });
+            const writable   = await fileHandle.createWritable();
+            await writable.write(chunk.blob);
+            await writable.close();
+            savedCount++;
+          }
+          showToast(`✅ Saved ${savedCount} merged JPG(s) to folder!`);
+        } catch (err) {
+          console.error('Error saving chunks to folder', err);
+          showToast('❌ Failed to save to folder. Downloading normally...', true);
+          generatedChunks.forEach((item, idx) => {
+            setTimeout(() => downloadBlob(item.blob, item.filename), idx * 800);
+          });
+        }
+      } else {
+        generatedChunks.forEach((item, idx) => {
+          setTimeout(() => downloadBlob(item.blob, item.filename), idx * 800);
+        });
+        showToast(`🎉 Downloaded ${generatedChunks.length} merged images!`);
+      }
+
+    } catch (e) {
+      console.error(e);
+      showToast('❌ Error generating JPG chunks.', true);
+    } finally {
+      downloadChunksBtn.disabled = false;
+      downloadChunksBtn.textContent = oldText;
+    }
+  });
+
+  // Global variable to hold data for the opened ChatGPT tab
+  window.pendingChatGPTData = null;
+
+  // Listen for ChatGPT tab telling us it is ready
+  window.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'CHATGPT_READY') {
+      if (window.pendingChatGPTData) {
+        event.source.postMessage({
+          type: 'CHATGPT_UPLOAD',
+          imageDataUrl: window.pendingChatGPTData.imageDataUrl,
+          promptText: window.pendingChatGPTData.promptText
+        }, '*');
+        // Keep it for a bit in case of retries, or clear it
+        console.log('[Parent] Sent image data and prompt to ChatGPT window.');
+      }
+    }
+  });
+
+  chatgptBtn.addEventListener('click', async () => {
+    const selectedIndices = [...pagesGrid.querySelectorAll('input[type=checkbox]:checked')]
+      .map(cb => parseInt(cb.id.replace('cb-', '')));
+      
+    if (!selectedIndices.length) { 
+      showToast('⚠️ No pages selected.', true); 
+      return; 
+    }
+
+    chatgptBtn.disabled = true;
+    const oldText = chatgptBtn.textContent;
+    chatgptBtn.textContent = '⏳ Preparing...';
+    showToast('⏳ Generating chunk 1...');
+
+    try {
+      const chunkSizeInput = document.getElementById('chunk-size-input');
+      const CHUNK_SIZE = chunkSizeInput ? (parseInt(chunkSizeInput.value, 10) || 10) : 10;
+      
+      // Get the first chunk of selected pages
+      const firstChunkIndices = selectedIndices.slice(0, CHUNK_SIZE);
+      
+      // 1. Render all pages in this chunk to canvases
+      const canvases = await Promise.all(firstChunkIndices.map(async idx => {
+        const page = await pdfJsDoc.getPage(idx + 1);
+        const viewport = page.getViewport({ scale: 2.5 });
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        page.cleanup();
+        return canvas;
+      }));
+
+      // 2. Calculate dimensions
+      let totalHeight = 0;
+      let maxWidth = 0;
+      canvases.forEach(c => {
+        totalHeight += c.height;
+        if (c.width > maxWidth) maxWidth = c.width;
+      });
+
+      // 3. Create merged canvas
+      const mergedCanvas = document.createElement('canvas');
+      mergedCanvas.width = maxWidth;
+      mergedCanvas.height = totalHeight;
+      const ctx = mergedCanvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, mergedCanvas.width, mergedCanvas.height);
+
+      let currentY = 0;
+      canvases.forEach(c => {
+        const xOffset = Math.floor((maxWidth - c.width) / 2);
+        ctx.drawImage(c, xOffset, currentY);
+        currentY += c.height;
+      });
+
+      // 4. Export as PNG Data URL
+      const imageDataUrl = mergedCanvas.toDataURL('image/png');
+      if (!imageDataUrl) throw new Error("Canvas export failed");
+
+      // 5. Copy to clipboard
+      try {
+        const pngBlob = await new Promise(resolve => mergedCanvas.toBlob(resolve, 'image/png'));
+        await navigator.clipboard.write([
+          new ClipboardItem({ 'image/png': pngBlob })
+        ]);
+        console.log('[Clipboard] Copied Chunk 1 to clipboard.');
+      } catch (clipErr) {
+        console.warn('Clipboard write warning:', clipErr);
+      }
+
+      // 6. Store in global variable for postMessage
+      window.pendingChatGPTData = {
+        imageDataUrl: imageDataUrl,
+        promptText: activePromptText
+      };
+
+      showToast('🚀 Opening ChatGPT... It will auto-upload and submit.');
+
+      setTimeout(() => {
+        const url = `https://chatgpt.com/?q=${encodeURIComponent(activePromptText)}&autopaste=1`;
+        window.open(url, '_blank', 'opener');
+      }, 1000);
+
+    } catch (err) {
+      console.error(err);
+      showToast('❌ Failed to prepare image chunk: ' + err.message, true);
+    } finally {
+      chatgptBtn.disabled = false;
+      chatgptBtn.textContent = oldText;
+    }
+  });
+
+  // ── save to folder ───────────────────────────────────────
+
+  chooseFolderBtn.addEventListener('click', async () => {
+    try {
+      selectedDirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+      folderNameSpan.textContent = `Saving to: ${selectedDirHandle.name}`;
+      folderNameSpan.style.display = 'inline';
+      chooseFolderBtn.textContent = '📁 Change Folder';
+    } catch (e) {
+      if (e.name !== 'AbortError') showToast('❌ Could not open folder picker.', true);
+    }
+  });
+
+
+
+  // ── reset ─────────────────────────────────────────────────
+  function resetPages() {
+    pagesGrid.innerHTML = ''; pageBlobs = [];
+    pagesSection.style.display = 'none';
+    progWrap.style.display = 'none';
+    progBar.style.width = '0%';
+    if (promptPanel) promptPanel.style.display = 'none';
+    
+    // Reset chunks
+    if (chunksGrid) chunksGrid.innerHTML = '';
+    if (chunksSection) chunksSection.style.display = 'none';
+    if (combinedResponsesOutput) combinedResponsesOutput.value = '';
+    generatedChunksList.forEach(chunk => {
+      if (chunk.dataUrl && chunk.dataUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(chunk.dataUrl);
+      }
+    });
+    generatedChunksList = [];
+  }
+
+  function resetAll() {
+    pdfBytes = null; pdfDoc = null; pdfJsDoc = null; fileName = '';
+    
+    document.getElementById('drop-zone').style.display = 'block';
+    document.getElementById('or-divider').style.display = 'block';
+    document.getElementById('text-zone').style.display = 'flex';
+    document.getElementById('or-divider-2').style.display = 'block';
+    document.getElementById('merge-zone').style.display = 'flex';
+    
+    fileInfo.style.display = 'none';
+    optPanel.style.display = 'none';
+    splitBtn.style.display = 'none';
+    fileInput.value = '';
+    pasteTextInput.innerHTML = '';
+    if(document.getElementById('pdf-filename-input')) {
+       document.getElementById('pdf-filename-input').value = '';
+    }
+    if(document.getElementById('merge-filename-input')) {
+       document.getElementById('merge-filename-input').value = '';
+    }
+    if (typeof filesToMerge !== 'undefined') {
+       filesToMerge = [];
+       if (typeof updateMergeUI === 'function') updateMergeUI();
+    }
+    if (typeof textSequence !== 'undefined') {
+      textSequence = [];
+      if (typeof updateSnippetUI === 'function') updateSnippetUI();
+    }
+    resetPages();
+  }
+
+  // ── toast ─────────────────────────────────────────────────
+  let toastTimer;
+  function showToast(msg, warn = false) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.borderColor = warn ? 'rgba(239,68,68,.4)' : 'rgba(99,102,241,.4)';
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 3200);
+  }
+</script>
+<script>
+  // Register PWA Service Worker
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js')
+        .then(reg => console.log('[PWA] Service Worker registered:', reg.scope))
+        .catch(err => console.log('[PWA] SW registration failed:', err));
+    });
+  }
+</script>
+</body>
+</html>
